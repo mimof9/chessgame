@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<title>黑白棋逻辑</title>
+		<meta charset="utf-8">
+		<script src='./rough.js'></script>
+	</head>
+	<body>
+
+		<canvas id='canvas' height="1000" width="1000"></canvas>
+
+		<script>
+			const 
+				cvs = document.getElementById('canvas'),
+				ctx = cvs.getContext("2d"),
+				rc = rough.canvas(cvs),
+				btn = document.querySelector('#btn')
+			let now = 1
+
+			rc.rectangle(0, 0, 400, 400, { 
+				fill: 'red',
+				fillStyle: 'cross-hatch',
+				stroke: 'red',
+				roughness: 1,
+				hachureAngle: 0,
+				hachureGap: 50
+			})
+			// rc.circle(175, 175, 40)
+			// rc.circle(225, 225, 40)
+			// rc.circle(225, 175, 40, {
+			// 	fill: 'black',
+			// 	fillStyle: 'solid',
+			// })
+			// rc.circle(175, 225, 40, {
+			// 	fill: 'black',
+			// 	fillStyle: 'solid'
+			// })
+			
+
+			cvs.addEventListener('click', function(e) {
+
+				const 
+					x = Math.floor(e.offsetX / 50),
+					y = Math.floor(e.offsetY / 50)
+				
+				if (Array.isArray(chessboard[x][y])) {
+					eatchess(chessboard, x, y, now)
+					now = -now
+					setAllXY(chessboard, now)
+					render(chessboard)
+
+					if(isEnd(chessboard)) {
+						alert(isEnd(chessboard))
+					}
+				} else {
+					console.log('不能在这下')
+				}
+
+				
+			}, false)
+
+			function renderBlack(x, y) {
+				rc.circle(x*50+25, y*50+25, 40, {
+					fill: 'black',
+					fillStyle: 'solid',
+				})
+			}
+			function renderWhite(x, y) {
+				// 棋格100% 棋子80% 清空时清空90%
+				ctx.clearRect(x*50+2.5, y*50+2.5, 45, 45)	// 清空一片区域
+				rc.circle(x*50+25, y*50+25, 40) // 黑变白
+			}
+
+
+
+			
+			// 第一点，先确定棋盘状态对应值
+			// 第二点，确定棋盘哪些位置可以下
+			// 第三点，在某位置落子了去吃子
+			// 最后再去考虑，算法是否可以优化？
+			// 根据多设置状态来减少吃子路径，还是通过组织代码的方式去解决？
+			// 组织代码的方式就是 函数柯里化呀 然后怎么把9个循环改成一个呀(修改下一步x,y去做到)
+			// 感觉还是都要考虑。
+
+			// 棋盘状态 0可落子 1黑子 -1白子 可落子的话直接上坐标数组
+			// const chessboard = new Array(8).fill(new Array(8).fill(0))
+			
+			class Point {
+				constructor(x, y) {
+					this.x = x
+					this.y = y
+				}
+			}
+			
+			const empty = 0
+			const black = 1
+			const white = -1
+			const size = 8
+
+			const chessboard = [
+				[empty, empty, empty, empty, empty, empty, empty, empty],
+				[empty, empty, empty, empty, empty, empty, empty, empty],
+				[empty, empty, empty, empty, empty, empty, empty, empty],
+				[empty, empty, empty, white, black, empty, empty, empty],
+				[empty, empty, empty, black, white, empty, empty, empty],
+				[empty, empty, empty, empty, empty, empty, empty, empty],
+				[empty, empty, empty, empty, empty, empty, empty, empty],
+				[empty, empty, empty, empty, empty, empty, empty, empty],
+			]
+
+			// 位置合法
+			function isLegal(x, y) {
+				return x >= 0 && x < size && y >= 0 && y < size
+			}
+
+			// x,y 是否可落num 如果可以把 x,y位置设置为对应点数组
+			function setXY(chessboard, x, y, num) {
+				if (chessboard[x][y] === empty) {
+					chessboard[x][y] = []
+
+					// 周边有8个方向，从正上方顺时针遍历8个方向
+					const 
+						xstep = [-1, -1, 0, 1, 1,  1,  0, -1],
+						ystep = [ 0,  1, 1, 1, 0, -1, -1, -1]
+
+					for (let i=0; i<size; i++) {
+						let 
+							xx = x + xstep[i],
+							yy = y + ystep[i],
+							rnum = 0	// 另一种棋的个数
+						for ( ; isLegal(xx, yy); xx+=xstep[i], yy+=ystep[i]) {
+							if (chessboard[xx][yy] === -num)
+								rnum++
+							else if (chessboard[xx][yy] === num) {
+								if (rnum !== 0) {
+									// 方向+点
+									chessboard[x][y].push([i, new Point(xx, yy)])
+								} else break
+							}
+							else break	// 中间出现empty
+						}
+					}
+
+					if (chessboard[x][y].length === 0)
+						chessboard[x][y] = empty
+				}
+			}
+
+			// 根据棋盘状态 确定可以落子的位置
+			function setAllXY(chessboard, num) {
+				for (let x=0; x<size; x++) {
+					for (let y=0; y<size; y++) {
+						setXY(chessboard, x, y, num)
+					}
+				}
+			}
+			
+			// 清空设置的可吃子位置
+			function clearAllSetXY(chessboard) {
+				for (let x=0; x<size; x++) {
+					for (let y=0; y<size; y++) {
+						if (chessboard[x][y] !== white && chessboard[x][y] !== black) {
+							chessboard[x][y] = empty
+						}
+					}
+				}
+			}
+
+			// 吃子
+			function eatchess(chessboard, x, y, num) {
+				const 
+					info = chessboard[x][y],
+					xstep = [-1, -1, 0, 1, 1,  1,  0, -1],
+					ystep = [ 0,  1, 1, 1, 0, -1, -1, -1]
+
+				clearAllSetXY(chessboard)
+				chessboard[x][y] = num
+	
+				info.map(item => {
+					const 
+						i = item[0],
+						p = item[1]
+					let 
+						xx = x + xstep[i],
+						yy = y + ystep[i]
+
+					while(p.x !== xx || p.y !== yy) {
+						chessboard[xx][yy] = num
+
+						xx += xstep[i]
+						yy += ystep[i]
+					}
+				})
+			}
+			
+			// 所以到现在，显示可落子位置，就是setAllXY(chessboard, black)
+			// 落子就是 eatchess(chessboard, 5, 3, black)
+
+			function render(chessboard) {
+				for (let x=0; x<size; x++) {
+					for (let y=0; y<size; y++) {
+						if (chessboard[x][y] === black)
+							renderBlack(x, y)
+						else if (chessboard[x][y] === white) {
+							renderWhite(x, y)
+						} else if (Array.isArray(chessboard[x][y])) {
+							ctx.fillText("落",x*50+20,y*50+25);
+						} else if (chessboard[x][y] === empty) {
+							ctx.clearRect(x*50+10, y*50+10, 30, 30)
+						}
+					}
+				}
+			}
+			
+			setAllXY(chessboard, black)
+			render(chessboard)
+
+			function isEnd(chessboard) {
+				let wnum = 0,
+					bnum = 0
+				for (let x=0; x<size; x++) {
+					for (let y=0; y<size; y++) {
+						if (Array.isArray(chessboard[x][y])) {
+							return false	// 没结束
+						} else if(chessboard[x][y] === black) bnum++
+						else if(chessboard[x][y] === white) wnum++
+					}
+				}
+				if (wnum>bnum) return '白旗胜利';
+				else if(wnum<bnum) return '黑棋胜利';
+				else return '平局'
+			}
+		</script>
+	</body>
+</html>
